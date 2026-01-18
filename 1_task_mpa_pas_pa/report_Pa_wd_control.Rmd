@@ -1,0 +1,413 @@
+---
+title: "Pa for WD, Control (Hand, Machine)"
+author: "Yaromir Kobikov <kobikov.yaromir@gmail.com>"
+date: "Date: `r format(Sys.time(), '%d/%m/%Y')`"
+output:
+ word_document: default
+ html_document:
+  toc: true
+  toc_float:
+   collapsed: false
+editor_options:
+ chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+source("../BayesianPValue.R")
+```
+
+# Pa (Probability of postural asymmetry)
+
+Threshold 1 mm.
+
+# Read Data
+
+Read from Excel file.
+
+```{r input}
+
+rds_folder_name <- "../rds/task_1/"
+file_name <- "../data/WD_PA 25 12 26_1.xlsx"
+sheet <- "DATA_25 12 25"
+
+my.seed <- 103592321 # reproducible Bayessian fit
+threshold <- 1.0001 # assymetry means > 0mm, i.e. no symmetric rats
+
+myname0 <- "Pa"
+
+data <- read_excel(file_name, sheet = sheet) %>%
+  pivot_longer(
+    cols = matches("^(Hand|MP)\\s*\\d+\\.\\d+$"),
+    names_to = c("Measuerment method", "Measure", "Rep"),
+    names_pattern = "^(Hand|MP)\\s*(\\d+)\\.(\\d+)$",
+    values_to = "PA"
+  ) %>%
+  select(c(RatID, `Measurement 1`, `Measuerment method`, Measure, PA)) %>%
+  mutate(RatID = factor(RatID),
+         Measure = as.integer(Measure),
+         # Time = factor(Time, c("1", "3"), c("0min", "180min")),
+         Measure = paste0("Measure.", Measure),
+         Trt2 = factor(`Measurement 1`, c("24H WD", "Control 1")),
+         MPA = abs(PA),
+         Sym = factor(MPA < threshold, c(TRUE, FALSE), c("Sym", "Asym"))) %>%
+  filter(Measure == "Measure.1") %>% 
+  drop_na("PA") %>%
+  ungroup %>% droplevels(.)
+
+
+data_hand <-
+  data %>% 
+  filter(`Measuerment method` == "Hand") %>% 
+  droplevels(.)
+
+
+data_machine <-
+  data %>% 
+  filter(`Measuerment method` == "MP") %>% 
+  droplevels(.)
+
+```
+
+\|PA\| $\leqslant$ 1mm (threshold) are defined as "Symmetric" (Sym) (\|PA\| - Average of all 3 measurements per rat)
+
+Hand data
+
+```{r input2, echo=FALSE}
+
+data_hand %>%
+  arrange(Trt2) %>%
+  group_by(RatID, Trt2) %>%
+  summarise(
+    Sym = factor(mean(MPA) < threshold, c(TRUE, FALSE), c("Sym", "Asym")),
+    .groups = "drop"
+  ) %>%
+  group_by(Sym, Trt2) %>%
+  summarise(rats = n_distinct(RatID), .groups = "drop") %>%
+  pivot_wider(names_from = Trt2, values_from = rats) %>%
+  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0))) %>%
+  flextable::flextable() %>%
+  flextable::autofit()
+
+```
+
+# (Hand) Analyse WD vs Control
+
+## Pa: Model Overview
+
+The data points
+
+```{r hand_data, echo=FALSE}
+
+myname <- paste0(myname0, "_wd_control_Hand")
+
+data_hand_trt2 <- 
+  data_hand
+
+data_hand_trt2 %>%
+  arrange(Trt2) %>%
+  group_by(RatID, Trt2) %>%
+  summarise(
+    Sym = factor(mean(MPA) < threshold, c(TRUE, FALSE), c("Sym", "Asym")),
+    .groups = "drop"
+  ) %>%
+  group_by(Sym, Trt2) %>%
+  summarise(rats = n_distinct(RatID), .groups = "drop") %>%
+  pivot_wider(names_from = Trt2, values_from = rats) %>%
+  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0))) %>%
+  flextable::flextable() %>%
+  flextable::autofit()
+
+```
+
+Trials and number of asymmetric rats for the WD & Control group
+
+```{r hand_pa_asym, echo=FALSE}
+
+dtaAsym <- data_hand_trt2 %>% 
+  arrange(Trt2) %>% 
+  group_by(Trt2) %>% 
+  mutate( Asym = as.integer(factor(Sym, c("Sym", "Asym"))) - 1 ) %>%
+  summarise(nAsym = as.integer(sum(Asym)), 
+            nTrials = n(), 
+            .groups = "drop") %>%
+  mutate(Trt2 = fct_inorder(Trt2))
+
+# dta5050 <- dtaAsym %>%
+#   ungroup() %>% group_by(Time) %>%
+#   summarise( Side = "50/50",
+#              nAsym = as.integer( round(max(nTrials)/2 - 0.1)),
+#              nTrials = as.integer( 2*nAsym ),
+#              .groups = "drop" )
+# 
+# dta5050 <- bind_rows(dta5050, dtaAsym) %>%
+#   mutate(Side = fct_inorder(Side))
+
+dtaAsym %>% 
+  pivot_longer(cols=c(nAsym, nTrials), names_to = "counts") %>%
+  pivot_wider(names_from=c(Trt2), values_from=c(value)) %>% 
+  flextable %>% autofit
+
+```
+
+Model fit and QC:
+
+```{r hand_pa_model_summary}
+
+m.lat <- brm(
+  data = dtaAsym, 
+  family = binomial,
+  nAsym | trials(nTrials) ~ 0 + Trt2,
+  prior = c(prior(normal(0, 1), class = "b")),
+  seed = my.seed, 
+  chains = my.cores, 
+  cores = my.cores, 
+  iter = 4e4, 
+  sample_prior = "yes",
+  file = paste0(rds_folder_name, "wd_control_Pa_model_summary.rds"),
+  file_refit = "on_change")
+
+summary(m.lat)
+
+```
+
+## Pa: MCMC conversion diagnostics
+
+Posterior predictive check
+
+```{r hand_pa_MCMC_ppcheck}
+
+plt[["hand WD&Control Pa pp_check"]] <- pp_check(m.lat, ndraws = 11)
+print(plt[["hand WD&Control Pa pp_check"]])
+```
+
+Autocorrelations
+
+```{r hand_pa_MCMC_ac}
+
+print( plt[["hand WD&Control Pa ac"]] <- stan_ac(m.lat$fit) )
+
+```
+
+## Pa: Estimated model marginals
+
+Estimated model medians +- 95% HPDCI (HPDCI = highest posterior density continuous interval) as a table. P-values are for Pa \> 0.
+
+```{r hand_pa_emm}
+
+emm <- emmeans(m.lat, ~ Trt2, regrid = "response", nesting = NULL)
+emm_show(emm)
+
+```
+
+Plot of medians +- 95% HPDCI:
+
+```{r hand_pa_emm2, echo=FALSE, fig.width = 8}
+
+plt[["Hand WD&Control Pa emm"]] <- emm %>% emm_inorder %>%
+  ggplot(aes(y = fct_rev(interaction(Trt2, sep=", ", drop=TRUE)), x = .value, fill = Trt2)) %>%
+  my.stat_eyeh() +
+  geom_vline(xintercept=0.5, linetype="dashed", color="black") +
+  coord_cartesian(xlim = c(0, 1)) +
+  labs(title=myname, y="", x="Pa: WD, Control")
+
+print(plt[["Hand WD&Control Pa emm"]])
+
+```
+
+## Pa: Contrasts
+
+Contrasts between WD and Control as a table:
+
+```{r hand_pa_contrasts}
+
+emmc <- contrast(emm, simple="Trt2", method = "pairwise")
+emm_show(emmc)
+
+```
+
+Contrasts between WD and Control as a median +- 95% HPDCI:
+
+```{r hand_so_pa_by_contrast, echo=FALSE, fig.width = 8}
+
+plt[["contrast hand WD&Control Pa"]] <- emmc %>% emm_inorder %>% 
+  ggplot(aes(y = fct_rev(interaction(contrast, sep=", ", drop=TRUE)), x = .value, fill = contrast)) %>%
+  my.stat_eyeh() +
+  geom_vline(xintercept=0, linetype="dashed", color="black") +
+  # coord_cartesian(ylim = c(-1, 1)) +
+  labs(title=myname, y="", x="Pa, contrast: WD&Control")
+print(plt[["contrast hand WD&Control Pa"]])
+
+```
+
+# (Machine) Analyse WD vs Control
+
+## Pa: Model Overview
+
+The data points
+
+```{r machine_data, echo=FALSE}
+
+myname <- paste0(myname0, "_WD_Control_Machine")
+
+data_machine_trt2 <- 
+  data_machine
+
+data_machine_trt2 %>%
+  arrange(Trt2) %>%
+  group_by(RatID, Trt2) %>%
+  summarise(
+    Sym = factor(mean(MPA) < threshold, c(TRUE, FALSE), c("Sym", "Asym")),
+    .groups = "drop"
+  ) %>%
+  group_by(Sym, Trt2) %>%
+  summarise(rats = n_distinct(RatID), .groups = "drop") %>%
+  pivot_wider(names_from = Trt2, values_from = rats) %>%
+  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0))) %>%
+  flextable::flextable() %>%
+  flextable::autofit()
+
+```
+
+Trials and number of asymmetric rats for the Sham (SO) group
+
+```{r machine_pa_asym, echo=FALSE}
+
+dtaAsym <- data_machine_trt2 %>% 
+  arrange(Trt2) %>% 
+  group_by(Trt2) %>% 
+  mutate( Asym = as.integer(factor(Sym, c("Sym", "Asym"))) - 1 ) %>%
+  summarise(nAsym = as.integer(sum(Asym)), 
+            nTrials = n(), 
+            .groups = "drop") %>%
+  mutate(Trt2 = fct_inorder(Trt2))
+
+# dta5050 <- dtaAsym %>%
+#   ungroup() %>% group_by(Time) %>%
+#   summarise( Side = "50/50",
+#              nAsym = as.integer( round(max(nTrials)/2 - 0.1)),
+#              nTrials = as.integer( 2*nAsym ),
+#              .groups = "drop" )
+# 
+# dta5050 <- bind_rows(dta5050, dtaAsym) %>%
+#   mutate(Side = fct_inorder(Side))
+
+dtaAsym %>% 
+  pivot_longer(cols=c(nAsym, nTrials), names_to = "counts") %>%
+  pivot_wider(names_from=c(Trt2), values_from=c(value)) %>% 
+  flextable %>% autofit
+
+```
+
+Model fit and QC:
+
+```{r machine_pa_model_summary}
+
+m.lat <- brm(
+  data = dtaAsym, 
+  family = binomial,
+  nAsym | trials(nTrials) ~ 0 + Trt2,
+  prior = c(prior(normal(0, 1), class = "b")),
+  seed = my.seed, 
+  chains = my.cores, 
+  cores = my.cores, 
+  iter = 4e4, 
+  sample_prior = "yes",
+  file = paste0(rds_folder_name, "wd_control_Pa_model_summary_machine.rds"),
+  file_refit = "on_change")
+
+summary(m.lat)
+
+```
+
+## Pa: MCMC conversion diagnostics
+
+Posterior predictive check
+
+```{r machine_pa_MCMC_ppcheck}
+
+plt[["Machine WD&Control Pa pp_check"]] <- pp_check(m.lat, ndraws = 11)
+print(plt[["Machine WD&Control Pa pp_check"]])
+```
+
+Autocorrelations
+
+```{r machine_pa_MCMC_ac}
+
+print( plt[["Machine WD&Control Pa ac"]] <- stan_ac(m.lat$fit) )
+
+```
+
+## Pa: Estimated model marginals
+
+Estimated model medians +- 95% HPDCI (HPDCI = highest posterior density continuous interval) as a table. P-values are for Pa \> 0.
+
+```{r machine_pa_emm}
+
+emm <- emmeans(m.lat, ~ Trt2, regrid = "response", nesting = NULL)
+emm_show(emm)
+
+```
+
+Plot of medians +- 95% HPDCI:
+
+```{r machine_pa_emm2, echo=FALSE, fig.width = 8}
+
+plt[["Machine WD&Control Pa emm"]] <- emm %>% emm_inorder %>%
+  ggplot(aes(y = fct_rev(interaction(Trt2, sep=", ", drop=TRUE)), x = .value, fill = Trt2)) %>%
+  my.stat_eyeh() +
+  geom_vline(xintercept=0.5, linetype="dashed", color="black") +
+  coord_cartesian(xlim = c(0, 1)) +
+  labs(title=myname, y="", x="Pa: WD&Control")
+
+print(plt[["Machine WD&Control Pa emm"]])
+
+```
+
+## Pa: Contrasts
+
+Contrasts between WD&Control as a table:
+
+```{r machine_pa_contrasts}
+
+emmc <- contrast(emm, simple="Trt2", method = "pairwise")
+emm_show(emmc)
+
+```
+
+Contrasts between WD&Control as a median +- 95% HPDCI:
+
+```{r machine_pa_contrast, echo=FALSE, fig.width = 8}
+
+plt[["contrast Machine WD&Control Pa"]] <- emmc %>% emm_inorder %>% 
+  ggplot(aes(y = fct_rev(interaction(contrast, sep=", ", drop=TRUE)), x = .value, fill = contrast)) %>%
+  my.stat_eyeh() +
+  geom_vline(xintercept=0, linetype="dashed", color="black") +
+  # coord_cartesian(ylim = c(-1, 1)) +
+  labs(title=myname, y="", x="Pa, contrast: WD&Control")
+print(plt[["contrast Machine WD&Control Pa"]])
+
+```
+
+
+# Editable PowerPoint plots generated...
+
+```{r pptx, message=TRUE, warning=TRUE, include=FALSE, results='hide'}
+
+myname <- paste0(myname0, "_WD_Control_Hand_Machine")
+
+doc <- read_pptx()
+
+for(nm in names(plt)) {
+  doc <- doc %>%
+    add_slide(layout = "Title and Content", master = "Office Theme") %>%
+    ph_with(value = rvg::dml(ggobj = plt[[nm]]),
+          location = ph_location_type(type = "body"
+                                      #, width=S_width, height=S_height
+                                      ),
+          bg = "transparent" ) %>%
+    ph_with(value = nm,
+          location = ph_location_type(type = "title") )
+}
+doc %>% print(target = paste0(myname,".pptx"))
+
+```

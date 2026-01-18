@@ -21,6 +21,18 @@
 # RStudio files
 .Rproj.user/
 
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+
 # produced vignettes
 vignettes/*.html
 vignettes/*.pdf
@@ -47,3 +59,10 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+*.rds
+*.pptx
+*.docx
+*.png
+*.Rdata
+*.results
