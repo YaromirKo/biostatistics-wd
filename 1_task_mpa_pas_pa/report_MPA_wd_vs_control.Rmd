@@ -36,6 +36,24 @@ my.seed <- 103592321 # reproducible Bayessian fit
 myname0 <- "MPA"
 
 data <- read_excel(file_name, sheet = sheet) %>%
+      select(c(RatID, `BW (pre)`, `BW (post)`, `Measurement 1`, `Measurement 3: 2-3H after treatment 2`, `MP 1.1`, `MP 1.2`, `MP 1.3`, `MP 3.1`, `MP 3.2`, `MP 3.3`)) %>% 
+      select(c(RatID, `BW (pre)`, `BW (post)`, `Measurement 1`, `Measurement 3: 2-3H after treatment 2`, `MP 1.1`, `MP 1.2`, `MP 1.3`, `MP 3.1`, `MP 3.2`, `MP 3.3`)) %>% 
+    rename(
+      Measurement.1 = `Measurement 1`,
+      Measurement.3 = `Measurement 3: 2-3H after treatment 2`,
+      BW_pre        = `BW (pre)`,
+      BW_post       = `BW (post)`
+    ) %>% 
+    rename_with(
+      ~ sub("^MP\\s*(\\d+)\\.(\\d+)$", "PA\\1.\\2", .x),
+      .cols = matches("^MP\\s*(1|3)\\.(1|2|3)$")
+    ) %>% 
+    mutate(RatID = factor(RatID),
+           Trt1 = factor(Measurement.1, c("24H WD", "Control 1")),
+           Trt3 = factor(Measurement.3, c("Sp", "Control 1", "Control 2", "Control 3", "SSR", "Conivaptan"))
+    )
+
+data <- read_excel(file_name, sheet = sheet) %>%
   pivot_longer(
     cols = matches("^(Hand|MP)\\s*\\d+\\.\\d+$"),
     names_to = c("Measuerment method", "Measure", "Rep"),

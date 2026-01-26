@@ -117,9 +117,9 @@ std.prior <- brm(
   seed = my.seed, 
   chains = my.cores, 
   cores = my.cores, 
-  iter = 4e4,
+  iter = 1e4,
   sample_prior = "only",
-  file = paste0(rds_folder_name, "wd_ssr_conivaptan_control_2_3_pas_check_prior.rds"),
+  file = paste0(rds_folder_name, "wd_ssr_conivaptan_control_2_3_pas_check_prior_2.rds"),
   file_refit = "on_change"
 )
 
@@ -157,7 +157,7 @@ std.fit <-  update(std.prior,
                    # control = list(adapt_delta = 0.99),
                    seed = my.seed, 
                    cores = my.cores,
-                   file = paste0(rds_folder_name, "wd_ssr_conivaptan_control_2_3_pas_model_summary.rds"),
+                   file = paste0(rds_folder_name, "wd_ssr_conivaptan_control_2_3_pas_model_summary_2.rds"),
                    file_refit = "on_change")
 summary(std.fit)
 
@@ -278,9 +278,9 @@ std.prior <- brm(
   seed = my.seed, 
   chains = my.cores, 
   cores = my.cores, 
-  iter = 4e4,
+  iter = 1e4,
   sample_prior = "only",
-  file = paste0(rds_folder_name, "wd_ssr_conivaptan_control_2_3_pas_check_prior_machine.rds"),
+  file = paste0(rds_folder_name, "wd_ssr_conivaptan_control_2_3_pas_check_prior_machine_2.rds"),
   file_refit = "on_change"
 )
 
@@ -312,7 +312,7 @@ std.fit <-  update(std.prior,
                    control = list(adapt_delta = 0.999, max_treedepth = 15),
                    seed = my.seed, 
                    cores = my.cores,
-                   file = paste0(rds_folder_name, "wd_ssr_conivaptan_control_2_3_pas_model_summary_machine.rds"),
+                   file = paste0(rds_folder_name, "wd_ssr_conivaptan_control_2_3_pas_model_summary_machine_2.rds"),
                    file_refit = "on_change")
 summary(std.fit)
 
