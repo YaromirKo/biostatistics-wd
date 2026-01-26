@@ -71,10 +71,10 @@ print(plt[["all_group"]])
 # Analyse Groups, Time
 
 ```{r dta_pre}
-# get only 24H WD + Control 1 (in )
+# get only 24H WD + Control 1 (in Measurement 1)
 dta_pre <- dta %>% 
   filter(Time == '24H') %>%
-  filter(Trt %>% c(""))
+  filter(Trt %in% c("24H WD", "Control 1")) %>% 
   droplevels(.)
 
 ```
@@ -83,14 +83,14 @@ The median (bars) and 95% HPDCI (whiskers) for SF $\Delta W$ data points. __NOT_
 
 ```{r plot_pre}
 
-myname <- "SF 0-2 span=0.4 (Saline, TRH, GnRH, CCK8) Time"
+myname <- "SF 0-2 span=0.4 (24H WD, Control 1) Time"
 
-plt[["Groups, Time"]] <- 
+plt[["Trt, Time"]] <- 
   dta_pre %>% 
-  group_by(Group, Time, dT) %>% 
+  group_by(Trt, Time, dT) %>% 
   median_hdci(W, .width = 0.95) %>%
   ungroup() %>%
-  ggplot(aes(x=interaction(dT, Time, sep=", ", drop=TRUE), y=W, fill=Group)) + 
+  ggplot(aes(x=interaction(dT, Time, sep=", ", drop=TRUE), y=W, fill=Trt)) + 
     geom_bar(position=position_dodge(), stat="identity") +
     geom_errorbar(aes(ymin=.lower, ymax=.upper),
                   width=.2,   # Width of the error bars
@@ -99,7 +99,7 @@ plt[["Groups, Time"]] <-
     theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
     labs(title=myname, x="Medians and 95% HDCI", y="dW")
 
-print(plt[["Groups, Time"]])
+print(plt[["Trt, Time"]])
 
 ```
 
@@ -108,10 +108,10 @@ The group sizes are (distinct rats only, same rats with different stimulation lo
 ```{r input2_pre, echo=FALSE}
 
 d.sum <- dta_pre %>% 
-  arrange(Group, Time) %>% 
-  group_by(Group, Time) %>% 
+  arrange(Trt, Time) %>% 
+  group_by(Trt, Time) %>% 
   summarise( rats = length(unique(RatID)) ) %>%
-  pivot_wider(names_from=c(Group), values_from=rats)
+  pivot_wider(names_from=c(Trt), values_from=rats)
 
 d.sum %>% flextable %>% fontsize(part = "header", size = 9) %>% autofit
 
@@ -126,7 +126,7 @@ Prior predictive check
 std.prior <- brm(
   data = dta_pre,
   family = gaussian,
-  W ~ 0 + Time:Group + (1|RatID),
+  W ~ 0 + Trt + (1|RatID),
   prior = c(prior(normal(0, 5), class = "sigma"),
             prior(normal(0, 5), class = "sd"),
             prior(normal(0, 20), class = "b")),
@@ -141,23 +141,21 @@ std.prior <- brm(
 
 
 cond_eff <- conditional_effects(std.prior,
-                                "Group",
-                                method="fitted",
-                                conditions=make_conditions(dta_pre, vars = c("Time"))
-                                )
+                                "Trt",
+                                method="fitted")
 
-plt[["Groups Time prior check"]] <- plot(cond_eff,
+plt[["Trt prior check"]] <- plot(cond_eff,
                                        points = TRUE,
                                        point_args = list(width = 0.1, shape="o", col="red"),
                                        plot=FALSE)[[1]] +
                                   geom_hline(yintercept=0, linetype="dashed", color="black")
 
 set.seed(2)
-plt[["Groups Time prior pp_check"]] <- pp_check(std.prior, ndraws = 11)
+plt[["Trt prior pp_check"]] <- pp_check(std.prior, ndraws = 11)
 
 print(cond_eff[[1]])
-print(plt[["Groups Time prior check"]])
-print(plt[["Groups Time prior pp_check"]])
+print(plt[["Trt prior check"]])
+print(plt[["Trt prior pp_check"]])
 
 ```
 
@@ -168,7 +166,7 @@ Model fit and QC:
 std.fit <-  update(std.prior, 
                    sample_prior = "yes",
                    # control = list(adapt_delta = 0.99),
-                   control = list(max_treedepth = 15),
+                   # control = list(max_treedepth = 15),
                    seed = my.seed, 
                    cores = my.cores,
                    file = paste0(rds_folder_name, "dw_model_summary.rds"),
@@ -186,8 +184,8 @@ Posterior predictive check
 
 set.seed(2) # reproducible pp_check
 
-plt[["SF Groups Time pp_check"]] <- pp_check(std.fit, ndraws = 21)
-print(plt[["SF Groups Time pp_check"]])
+plt[["SF Trt pp_check"]] <- pp_check(std.fit, ndraws = 21)
+print(plt[["SF Trt pp_check"]])
 
 ```
 
@@ -195,8 +193,8 @@ Autocorrelations
 
 ```{r sf_MCMC_ac_pre}
 
-plt[["SF Groups Time ac"]] <- stan_ac(std.fit$fit)
-print(plt[["SF Groups Time ac"]])
+plt[["SF Trt ac"]] <- stan_ac(std.fit$fit)
+print(plt[["SF Trt ac"]])
 
 ```
 
@@ -206,7 +204,7 @@ Estimated model medians +- 95% HPDCI (HPDCI = highest posterior density continuo
 
 ```{r sf_emm_pre}
 
-emm <- emmeans(std.fit, ~ Time|Group, regrid = "response", nesting = NULL)
+emm <- emmeans(std.fit, ~ Trt, regrid = "response", nesting = NULL)
 emm_show(emm)
 
 ```
@@ -215,8 +213,8 @@ Estimated model means as a median +- 95% HPDCI (HPDCI = highest posterior densit
 
 ```{r sf_emm2_pre, echo=FALSE, fig.width = 8}
 
-plt[["SF Groups Time emm"]] <- emm %>% emm_inorder %>%
-  ggplot(aes(x = interaction(Group, Time, sep=", ", drop=TRUE), y = .value, fill = Group)) %>%
+plt[["SF Trt emm"]] <- emm %>% emm_inorder %>%
+  ggplot(aes(x = interaction(Trt, sep=", ", drop=TRUE), y = .value, fill = Trt)) %>%
   my.stat_eye() +
   geom_hline(yintercept=0, linetype="dashed", color="black") +
   labs(title=myname, x="Estimated Marginal Medians and 95% HPDCI", y="dW")
@@ -227,19 +225,19 @@ Estimated model means as a median +- 95% HPDCI ("x" - mean values of measurement
 
 ```{r points_sf_pre, echo=FALSE, fig.width=8}
 
-plt[["SF Groups Time emm with Data Points"]] <- 
-  plt[["SF Groups Time emm"]] +
+plt[["SF Trt emm with Data Points"]] <- 
+  plt[["SF Trt emm"]] +
     geom_point(
       pch = 4,
       position = position_jitterdodge(jitter.width = 0.9, dodge.width = 0.9, seed = 2),
       data = {
         dta_pre %>%
-          group_by(RatID, Group, Time) %>%
+          group_by(RatID, Trt) %>%
           summarise(.value = mean(W), .groups = "drop")
       },
       aes(y=.value))
 
-print(plt[["SF Groups Time emm with Data Points"]])
+print(plt[["SF Trt emm with Data Points"]])
 
 ```
 
@@ -247,10 +245,10 @@ The bar and whiskers plot:
 
 ```{r sf_bar_whiskers_pre, echo=FALSE}
 
-plt[["SF Groups Time bar whiskers"]] <- emm %>% gather_emmeans_draws %>% 
+plt[["SF Trt bar whiskers"]] <- emm %>% gather_emmeans_draws %>% 
   median_hdci(.width = 0.95) %>% 
   ungroup() %>%
-  ggplot(aes(x = interaction(Group, Time, sep=", ", drop=TRUE), y = .value, fill = Group)) + 
+  ggplot(aes(x = interaction(Trt, sep=", ", drop=TRUE), y = .value, fill = Trt)) + 
     geom_bar(position=position_dodge(), aes(y=.value),stat="identity") +
     geom_errorbar(aes(ymin=.lower, ymax=.upper),
                   width=.2,   # Width of the error bars
@@ -259,7 +257,7 @@ plt[["SF Groups Time bar whiskers"]] <- emm %>% gather_emmeans_draws %>%
     theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
     labs(title=myname, x="Medians and 95% HDCI", y="dW")
 
-print(plt[["SF Groups Time bar whiskers"]])
+print(plt[["SF Trt bar whiskers"]])
 
 ```
 
@@ -267,8 +265,8 @@ The ccdinterval plot with same data as above bars and whiskers:
 
 ```{r sf_ccdfinterval_pre, echo=FALSE}
 
-plt[["SF Groups Time ccdfinterval"]] <- emm %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(Group, Time, sep=", ", drop=TRUE), y = .value, fill = Group)) +
+plt[["SF Trt ccdfinterval"]] <- emm %>% gather_emmeans_draws %>%
+  ggplot(aes(x = interaction(Trt, sep=", ", drop=TRUE), y = .value, fill = Trt)) +
   stat_ccdfinterval(point_interval = median_hdci, .width = 0.95,
              shape = 16, point_color = "black", interval_color = "black", 
              position="dodge", slab_color = NA) +
@@ -285,35 +283,29 @@ The ccdinterval plot with same data as above bars and whiskers ("x" - mean value
 
 ```{r points_sf_ccdfinterval_pre, echo=FALSE, fig.width=8}
 
-plt[["SF Groups Time ccdfinterval with Data Points"]] <- 
-  plt[["SF Groups Time ccdfinterval"]] +
+plt[["SF Trt ccdfinterval with Data Points"]] <- 
+  plt[["SF Trt ccdfinterval"]] +
     geom_point(
       pch = 4,
       position = position_jitterdodge(jitter.width = 0.9, dodge.width = 0.9, seed = 2),
       data = {
         dta_pre %>%
-          group_by(RatID, Group, Time) %>%
+          group_by(RatID, Trt) %>%
           summarise(.value = mean(W), .groups = "drop")
       },
       aes(y=.value))
 
-print(plt[["SF Groups Time ccdfinterval with Data Points"]])
+print(plt[["SF Trt ccdfinterval with Data Points"]])
 
 ```
 
-## SF $\Delta W$: Contrasts M2 vs M3,4,5:
+## SF $\Delta W$: Contrasts:
 
-Contrasts Groups Time as a table:
+Contrasts Trt as a table:
 
 ```{r sf_contrasts_pre}
 
-emmc <- contrast(
-  emm, 
-  method = "trt.vs.ctrl", # Treatment vs control contrast
-  ref = which(levels(emm)[[1]] == "M2.1h.post"), # Set M2 as the reference
-  by = "Group" # Perform contrasts separately for each Group
-)
-
+emmc <- rbind(contrast(emm, simple = "Trt", method = "pairwise"))
 emm_show(emmc)
 
 ```
@@ -322,250 +314,22 @@ Contrasts M2 vs M3/4/5 Time as a median +- 95% HPDCI (HPDCI = highest posterior 
 
 ```{r sf_by_pre, echo=FALSE, fig.width = 8}
 
-plt[["SF by Time"]] <- emmc %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(contrast, Group, sep=", ", drop=TRUE), y = .value, fill = Group)) %>%
+plt[["SF by Trt"]] <- emmc %>% gather_emmeans_draws %>%
+  ggplot(aes(x = interaction(contrast, sep=", ", drop=TRUE), y = .value, fill = contrast)) %>%
   my.stat_eye() +
   geom_hline(yintercept=0, linetype="dashed", color="black") +
-  labs(title=myname, x="0-2 sec", y="dW, contrast: M2 vs M3/4/5")
+  labs(title=myname, x="0-2 sec", y="dW, contrast Trt")
 
-print(plt[["SF by Time"]])
-
-```
-
-## SF $\Delta W$: Contrasts M2 vs M3,4,5:
-
-Contrasts Groups Time as a table:
-
-```{r sf_contrasts_pre_2}
-
-emmc <- contrast(emm, simple = "Group", method = "pairwise")
-emm_show(emmc)
+print(plt[["SF by Trt"]])
 
 ```
 
-
-```{r sf_selected_contrasts_2}
-desired_contrasts <- c(
-  "Group0 - Group1",
-  "Group0 - Group3",
-  "Group0 - Group5",
-  "Group0 - Group6",
-  "Group0 - Group7",
-  "Group1 - Group2",
-  "Group1 - Group3",
-  "Group1 - Group4",
-  "Group1 - Group5",
-  "Group1 - Group6",
-  "Group1 - Group7",
-  "Group3 - Group7",
-  "Group5 - Group6",
-  "Group6 - Group7"
-)
-filtered_emmc <- subset(emmc, contrast %in% desired_contrasts)
-emm_show(filtered_emmc)
-```
-
-Contrasts by Groups as a median +- 95% HPDCI (HPDCI = highest posterior density continuous interval):
-
-```{r sf_by_pre_2, echo=FALSE, fig.width = 8}
-
-plt[["SF by Group"]] <- filtered_emmc %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(contrast, Time, sep=", ", drop=TRUE), y = .value, fill = contrast)) %>%
-  my.stat_eye() +
-  geom_hline(yintercept=0, linetype="dashed", color="black") +
-  labs(title=myname, x="0-2 sec", y="dW, Group")
-
-print(plt[["SF by Group"]])
-
-```
-
-```{r sf_selected_contrasts_3}
-desired_contrasts <- c(
-  "Group0 - Group1",
-  "Group0 - Group3",
-  "Group0 - Group5",
-  "Group0 - Group6",
-  "Group0 - Group7"
-)
-
-filtered_emmc_g0 <- subset(emmc, contrast %in% desired_contrasts)
-emm_show(filtered_emmc_g0)
-```
-
-Contrasts by Groups as a median +- 95% HPDCI (HPDCI = highest posterior density continuous interval):
-
-```{r sf_by_pre_3, echo=FALSE, fig.width = 8}
-
-plt[["SF by Group 0"]] <- filtered_emmc_g0 %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(contrast, Time, sep=", ", drop=TRUE), y = .value, fill = contrast)) %>%
-  my.stat_eye() +
-  geom_hline(yintercept=0, linetype="dashed", color="black") +
-  labs(title=myname, x="0-2 sec", y="dW, Group")
-
-print(plt[["SF by Group 0"]])
-
-```
-
-```{r sf_selected_contrasts_4}
-desired_contrasts <- c(
-  "Group1 - Group2",
-  "Group1 - Group3",
-  "Group1 - Group4",
-  "Group1 - Group5",
-  "Group1 - Group6",
-  "Group1 - Group7"
-)
-
-
-filtered_emmc_g1 <- subset(emmc, contrast %in% desired_contrasts)
-emm_show(filtered_emmc_g1)
-```
-
-Contrasts by Groups as a median +- 95% HPDCI (HPDCI = highest posterior density continuous interval):
-
-```{r sf_by_pre_4, echo=FALSE, fig.width = 8}
-
-plt[["SF by Group 1"]] <- filtered_emmc_g1 %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(contrast, Time, sep=", ", drop=TRUE), y = .value, fill = contrast)) %>%
-  my.stat_eye() +
-  geom_hline(yintercept=0, linetype="dashed", color="black") +
-  labs(title=myname, x="0-2 sec", y="dW, Group")
-
-print(plt[["SF by Group 1"]])
-
-```
-
-```{r sf_selected_contrasts_5}
-desired_contrasts <- c(
-  "Group5 - Group6"
-)
-
-
-filtered_emmc_g5 <- subset(emmc, contrast %in% desired_contrasts)
-emm_show(filtered_emmc_g5)
-```
-
-Contrasts by Groups as a median +- 95% HPDCI (HPDCI = highest posterior density continuous interval):
-
-```{r sf_by_pre_5, echo=FALSE, fig.width = 8}
-
-plt[["SF by Group 6"]] <- filtered_emmc_g5 %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(contrast, Time, sep=", ", drop=TRUE), y = .value, fill = Time)) %>%
-  my.stat_eye() +
-  geom_hline(yintercept=0, linetype="dashed", color="black") +
-  labs(title=myname, x="0-2 sec", y="dW, Group")
-
-print(plt[["SF by Group 6"]])
-
-```
-
-```{r sf_selected_contrasts_6}
-desired_contrasts <- c(
-  "Group0 - Group7",
-  "Group1 - Group7",
-  "Group3 - Group7",
-  "Group6 - Group7"
-)
-
-filtered_emmc_g1 <- subset(emmc, contrast %in% desired_contrasts)
-emm_show(filtered_emmc_g1)
-```
-
-Contrasts by Groups as a median +- 95% HPDCI (HPDCI = highest posterior density continuous interval):
-
-```{r sf_by_pre_6, echo=FALSE, fig.width = 8}
-
-plt[["SF by Group 7"]] <- filtered_emmc_g1 %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(contrast, Time, sep=", ", drop=TRUE), y = .value, fill = contrast)) %>%
-  my.stat_eye() +
-  geom_hline(yintercept=0, linetype="dashed", color="black") +
-  labs(title=myname, x="0-2 sec", y="dW, Group")
-
-print(plt[["SF by Group 7"]])
-
-```
-
-
-```{r sf_selected_contrasts_7}
-emmc <- contrast(emm, simple = "Group", method = "pairwise")
-
-desired_contrasts <- c(
-  "Group0 - Group1",
-  "Group0 - Group6",
-  "Group0 - Group7",
-  "Group1 - Group6",
-  "Group1 - Group7",
-  "Group3 - Group6",
-  "Group3 - Group7"
-)
-
-
-filtered_emmc <- subset(emmc, contrast %in% desired_contrasts) %>% 
-    contrast(simple = "contrast", method = "pairwise")
-
-desired_contrasts2 <- c(
-  "(Group0 - Group1) - (Group0 - Group7)",
-  "(Group1 - Group7) - (Group1 - Group6)",
-  "(Group0 - Group6) - (Group0 - Group7)",
-  "(Group3 - Group6) - (Group3 - Group7)"
-)
-
-filtered_emmc <- subset(filtered_emmc, contrast %in% desired_contrasts2)
-
-emm_show(filtered_emmc)
-```
-
-Contrasts by Groups as a median +- 95% HPDCI (HPDCI = highest posterior density continuous interval):
-
-```{r sf_by_pre_7, echo=FALSE, fig.width = 8}
-
-plt[["SF by Group contrast of contrasts"]] <- filtered_emmc %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(Time, contrast, sep=", ", drop=TRUE), y = .value, fill = contrast)) %>%
-  my.stat_eye() +
-  geom_hline(yintercept=0, linetype="dashed", color="black") +
-  labs(title=myname, x="0-2 sec", y="dW, Group")
-
-print(plt[["SF by Group contrast of contrasts"]])
-
-```
-
-
-```{r sf_selected_contrasts_8}
-emmc <- contrast(emm, simple = "Group", method = "revpairwise")
-
-emm_show(emmc)
-desired_contrasts <- c(
-  "Group7 - Group0",
-  "Group7 - Group1",
-  "Group7 - Group3",
-  "Group7 - Group6"
-)
-
-
-filtered_emmc_g1 <- subset(emmc, contrast %in% desired_contrasts)
-emm_show(filtered_emmc_g1)
-
-```
-
-Contrasts by Groups as a median +- 95% HPDCI (HPDCI = highest posterior density continuous interval):
-
-```{r sf_by_pre_8, echo=FALSE, fig.width = 8}
-
-plt[["SF by Group 7 new"]] <- filtered_emmc_g1 %>% gather_emmeans_draws %>%
-  ggplot(aes(x = interaction(Time, contrast, sep=", ", drop=TRUE), y = .value, fill = contrast)) %>%
-  my.stat_eye() +
-  geom_hline(yintercept=0, linetype="dashed", color="black") +
-  labs(title=myname, x="0-2 sec", y="dW, Group")
-
-print(plt[["SF by Group 7 new"]])
-
-```
 
 # Editable PowerPoint plots generated...
 
 ```{r pptx, message=TRUE, warning=TRUE, include=FALSE, results='hide'}
 
-myname <- "SF span=0.4 0-2 CI dW CherryRat TG 8 groups"
+myname <- "SF span=0.4 0-2 CI dW WD vs Control"
 
 doc <- read_pptx()
 
