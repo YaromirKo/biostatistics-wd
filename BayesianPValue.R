@@ -94,7 +94,7 @@ emm_show <- function(myemm, myDraws = NULL) {
 set_emm_pvalue <- function(myemm) {
   set.seed(1) # reproducible mvt-adjustment for P-value
   myft <- summary(myemm, infer=TRUE, frequentist=TRUE, adjust="mvt") %>% as_tibble
-  
+
   # leave only p.value column
   myft <- myft %>% select(one_of(setdiff( names(myft),
                                           c("emmean", "response", "estimate", "rate", "prob", "SE", "df",
@@ -123,11 +123,11 @@ my.stat_eyeh <- function(ggp, ...) {
 my.stat_eye <- function(ggp, ...) {
   ggp +
     stat_eye(point_interval = median_hdci, .width = 0.95,
-             shape = 16, point_color = "black", interval_color = "black", 
-             position="dodge", slab_color = NA, 
+             shape = 16, point_color = "black", interval_color = "black",
+             position="dodge", slab_color = NA,
              # normalize="height",
              ... ) +
-    # scale_fill_brewer(palette = "Set2") + 
+    # scale_fill_brewer(palette = "Set2") +
     # scale_color_brewer(palette = "Dark2") +
     scale_color_brewer(palette = "Dark2") +
     # scale_fill_manual(values = my.colors) +
@@ -141,10 +141,9 @@ my.legend <- function(...) {theme(
   legend.key = element_blank(), ...)}
 
 notify <- function(title="Rstudio", msg="done") {
-  
+
   args <- c(title, msg)
   run(path_notify, args)
-  
+
   invisible()
 }
-
